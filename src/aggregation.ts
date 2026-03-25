@@ -150,7 +150,7 @@ export async function getTeamDashboard(
   };
 }
 
-export async function getMktDashboard(): Promise<TeamDashboardPayload> {
+export async function getMktDashboard(title: string = "MKT", filterByPosition?: string): Promise<TeamDashboardPayload> {
   const supabase = getSupabase() as any;
   const { data, error } = await supabase
     .from("mkt_members")
@@ -163,17 +163,26 @@ export async function getMktDashboard(): Promise<TeamDashboardPayload> {
   const groupMap = new Map<string, TeamDashboardPerformer[]>();
   
   for (const m of members) {
-    const position = String(m.Position || "Member").trim();
-    const groupName = position.charAt(0).toUpperCase() + position.slice(1).toLowerCase();
+    const position = String(m.Position || "Member").trim().toLowerCase();
+    
+    // If filtering is requested, only include matching positions
+    if (filterByPosition && position !== filterByPosition.toLowerCase()) continue;
+
+    let groupName = "Members";
+    if (position === "tl") {
+      groupName = "TLs";
+    } else if (position !== "member") {
+      groupName = position.charAt(0).toUpperCase() + position.slice(1);
+    }
     
     const performers = groupMap.get(groupName) || [];
     performers.push({
-      email: `${m.Member.toLowerCase().replace(/\s+/g, '.')}_mkt@example.com`, // Synthetic email
+      email: `${m.Member.toLowerCase().replace(/\s+/g, '.')}_mkt@example.com`,
       name: m.Member,
       role: groupName,
       score: Number(m.Points || 0),
       avatar: initials(m.Member),
-      metrics: { mous: 0, coldCalls: 0, followups: 0 } // Metrics not tracked for MKT
+      metrics: { mous: 0, coldCalls: 0, followups: 0 }
     });
     groupMap.set(groupName, performers);
   }
@@ -197,9 +206,9 @@ export async function getMktDashboard(): Promise<TeamDashboardPayload> {
   const totalPoints = miniTeams.reduce((sum, t) => sum + t.points, 0);
 
   return {
-    name: "MKT",
-    displayName: "Marketing Performance Dashboard",
-    functionSlug: "mkt",
+    name: title,
+    displayName: `${title} Performance Dashboard`,
+    functionSlug: title.toLowerCase(),
     miniTeams,
     totalPoints,
     totalGrowth: 0,

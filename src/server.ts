@@ -160,8 +160,14 @@ app.get("/api/dashboard/:team", async (req, res) => {
 
   try {
     let payload;
-    if (team === "mkt") {
-      payload = await getMktDashboard();
+    if (team === "marcom") {
+      payload = await getMktDashboard("MST");
+    } else if (team === "mkt") {
+      payload = await getMktDashboard("MKT");
+    } else if (team === "members") {
+      payload = await getMktDashboard("Members", "member");
+    } else if (team === "tls") {
+      payload = await getMktDashboard("TLs", "tl");
     } else {
       payload = await getTeamDashboard(team, period, asOfDate);
     }
