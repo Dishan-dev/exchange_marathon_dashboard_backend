@@ -40,15 +40,41 @@ function startAutoSyncScheduler(): void {
   }, intervalMs);
 }
 
+app.get("/", (_req, res) => {
+  res.status(200).send(`
+    <h1 style="color: #00ffcc; font-family: sans-serif;">🚀 Marathon Dashboard Backend</h1>
+    <p style="color: #666;">Status: Connected & Healthy</p>
+    <p>Current Server Time: ${new Date().toISOString()}</p>
+  `);
+});
+
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", timezone: config.timezone });
 });
 
-app.get("/sync/run", (_req, res) => {
+app.get("/sync/run", async (req, res) => {
+  // Allow GET to trigger sync for easier debugging/fallback
+  if (req.query.key === "marathon") {
+     if (schedulerBusy) {
+        return res.status(429).send("<h1>⏳ Sync Busy</h1><p>Another sync is already in progress.</p>");
+     }
+     res.status(202).send("<h1>🚀 Sync Triggered</h1><p>Synchronization is now running in the background. You can close this tab.</p>");
+     
+     schedulerBusy = true;
+     try {
+       await runSync();
+     } catch (e) {
+       console.error("GET sync failed:", e);
+     } finally {
+       schedulerBusy = false;
+     }
+     return;
+  }
+
   res.status(200).send(`
     <h1>📡 Marathon Sync Endpoint</h1>
     <p>This endpoint is active and healthy.</p>
-    <p>To trigger a synchronization, please send a <strong>POST</strong> request.</p>
+    <p>To trigger a synchronization manually, add <code>?key=marathon</code> to this URL.</p>
     <p>Current Server Time: ${new Date().toISOString()}</p>
   `);
 });
