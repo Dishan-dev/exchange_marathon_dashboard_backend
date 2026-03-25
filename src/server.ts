@@ -93,24 +93,28 @@ if (syncOnce) {
       process.exit(1);
     });
 } else {
-  const server = app.listen(config.port, () => {
+  const server = app.listen(config.port, "0.0.0.0", () => {
     const address = server.address() as AddressInfo | null;
     const port = address?.port || config.port;
-    console.log(`Backend running on http://localhost:${port}`);
+    console.log(`🚀 Backend successfully started on port ${port}`);
+    console.log(`🌍 Health check available at /health`);
     
     // Start scheduler if enabled
     startAutoSyncScheduler();
 
     // Trigger initial sync on startup with lock
     void (async () => {
-      if (schedulerBusy) return;
-      schedulerBusy = true;
       try {
-        console.log("Running initial startup sync...");
+        console.log("🚦 Checking sync configuration...");
+        assertSyncConfig();
+        
+        if (schedulerBusy) return;
+        schedulerBusy = true;
+        console.log("🔄 Running initial startup sync...");
         const result = await runSync();
-        console.log(`Initial startup sync completed: ${result.runId}`, result);
+        console.log(`✅ Initial startup sync completed: ${result.runId}`, result);
       } catch (error) {
-        console.error("Initial startup sync failed:", error instanceof Error ? error.message : error);
+        console.warn("⚠️ Initial startup sync skipped/failed:", error instanceof Error ? error.message : error);
       } finally {
         schedulerBusy = false;
       }
