@@ -10,18 +10,19 @@ function getGoogleAuth() {
         scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"]
     });
 }
-export async function fetchMultipleSheets(sheetNames) {
-    if (!config.google.spreadsheetId) {
-        throw new Error("GOOGLE_SPREADSHEET_ID is not configured");
+export async function fetchMultipleSheets(sheetNames, spreadsheetId) {
+    const targetId = spreadsheetId || config.google.spreadsheetId;
+    if (!targetId) {
+        throw new Error("Spreadsheet ID is not configured");
     }
     const sheets = google.sheets({ version: "v4", auth: getGoogleAuth() });
     const results = {};
     const promises = sheetNames.map(async (sheetName) => {
         const range = `${sheetName}!A:Z`;
         try {
-            console.log(`📡 Fetching range: "${range}"...`);
+            console.log(`📡 Fetching range: "${range}" from ${targetId}...`);
             const response = await sheets.spreadsheets.values.get({
-                spreadsheetId: config.google.spreadsheetId,
+                spreadsheetId: targetId,
                 range
             });
             const values = response.data.values || [];

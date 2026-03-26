@@ -150,7 +150,11 @@ export async function getTeamDashboard(
   };
 }
 
-export async function getMktDashboard(title: string = "MKT", filterByPosition?: string): Promise<TeamDashboardPayload> {
+export async function getMktDashboard(
+  title: string = "MKT",
+  filterByPosition?: string,
+  options?: { applyMstWeighting?: boolean }
+): Promise<TeamDashboardPayload> {
   const supabase = getSupabase() as any;
   const { data, error } = await supabase
     .from("mkt_members")
@@ -159,9 +163,118 @@ export async function getMktDashboard(title: string = "MKT", filterByPosition?: 
 
   if (error) throw error;
   const members = data || [];
+  const applyMstWeighting = !!options?.applyMstWeighting;
+
+  if (applyMstWeighting) {
+    type ParsedRow = {
+      groupName: string;
+      performer: TeamDashboardPerformer;
+      roleLower: string;
+    };
+
+    const parsedRows: ParsedRow[] = members.map((m: any) => {
+      const rawPosition = String(m.Position || "Member").trim();
+      let teamPrefix = "";
+      let roleName = rawPosition;
+
+      if (rawPosition.includes("|")) {
+        const parts = rawPosition.split("|");
+        teamPrefix = parts[0]?.trim() || "";
+        roleName = parts[1]?.trim() || rawPosition;
+      }
+
+      const roleLower = roleName.toLowerCase();
+      let groupName = "Members";
+      let normalizedRole = roleName.charAt(0).toUpperCase() + roleName.slice(1).toLowerCase();
+
+      if (roleLower === "tl") {
+        groupName = "TLs";
+        normalizedRole = "TL";
+      } else if (roleLower === "member") {
+        groupName = "Members";
+        normalizedRole = "Member";
+      } else {
+        groupName = normalizedRole;
+      }
+
+      if (teamPrefix) {
+        groupName = teamPrefix;
+      }
+
+      return {
+        groupName,
+        roleLower,
+        performer: {
+          email: `${String(m.Member || "unknown").toLowerCase().replace(/\s+/g, ".")}_mkt@example.com`,
+          name: String(m.Member || "Unknown"),
+          role: normalizedRole,
+          score: Number(m.Points || 0),
+          avatar: initials(String(m.Member || "Unknown")),
+          metrics: { mous: 0, coldCalls: 0, followups: 0 }
+        }
+      };
+    });
+
+    const teamRowsMap = new Map<string, ParsedRow[]>();
+    for (const row of parsedRows) {
+      const teamRows = teamRowsMap.get(row.groupName) || [];
+      teamRows.push(row);
+      teamRowsMap.set(row.groupName, teamRows);
+    }
+
+    const filterRole = filterByPosition?.toLowerCase();
+    const miniTeams: TeamDashboardMiniTeam[] = Array.from(teamRowsMap.entries())
+      .map(([name, rows]) => {
+        const membersRows = rows.filter((r) => r.roleLower === "member");
+        const tlRows = rows.filter((r) => r.roleLower === "tl");
+
+        const memberPoints = membersRows.reduce((sum, r) => sum + r.performer.score, 0);
+        const tlPoints = tlRows.reduce((sum, r) => sum + r.performer.score, 0);
+        const basePoints = memberPoints + tlPoints;
+        const weightedPoints = membersRows.length === 2 ? (basePoints * 4) / 3 : basePoints;
+
+        const visibleRows = filterRole
+          ? rows.filter((r) => r.roleLower === filterRole)
+          : rows;
+
+        return {
+          slug: name.toLowerCase(),
+          name,
+          rank: 0,
+          points: weightedPoints,
+          growth: 0,
+          icon: initials(name),
+          performers: visibleRows.map((r) => r.performer).sort((a, b) => b.score - a.score),
+          allPerformers: rows.map((r) => r.performer).sort((a, b) => b.score - a.score)
+        };
+      })
+      .filter((t) => t.performers.length > 0)
+      .sort((a, b) => b.points - a.points)
+      .map((t, i) => ({ ...t, rank: i + 1 }));
+
+    const totalPoints = miniTeams.reduce((sum, t) => sum + t.points, 0);
+
+    return {
+      name: title,
+      displayName: `${title} Performance Dashboard`,
+      functionSlug: title.toLowerCase(),
+      miniTeams,
+      totalPoints,
+      totalGrowth: 0,
+      completedActions: 0,
+      weeklyGrowth: 0,
+      asOfDate: currentDateKey(),
+      period: "marathon",
+      syncInfo: {
+        lastSyncTime: nowIso(),
+        nextSyncTime: nowIso(),
+        intervalMinutes: config.syncScheduler.intervalMinutes
+      }
+    };
+  }
 
   const groupMap = new Map<string, TeamDashboardPerformer[]>();
-  
+
   for (const m of members) {
     const rawPosition = String(m.Position || "Member").trim();
     let teamPrefix = "";
@@ -174,8 +287,7 @@ export async function getMktDashboard(title: string = "MKT", filterByPosition?: 
     }
 
     const roleLower = roleName.toLowerCase();
-    
-    // If filtering is requested, only include matching positions (now checking the parsed role)
+
     if (filterByPosition && roleLower !== filterByPosition.toLowerCase()) continue;
 
     let groupName = "Members";
@@ -191,11 +303,10 @@ export async function getMktDashboard(title: string = "MKT", filterByPosition?: 
       groupName = normalizedRole;
     }
 
-    // Use the team prefix (e.g. "T01") as the group name if present
     if (teamPrefix) {
       groupName = teamPrefix;
     }
-    
+
     const performers = groupMap.get(groupName) || [];
     performers.push({
       email: `${m.Member.toLowerCase().replace(/\s+/g, '.')}_mkt@example.com`,

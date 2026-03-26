@@ -34,12 +34,15 @@ export const config = {
             role: stringEnv("SHEET_COL_ROLE", "Role"),
             function: stringEnv("SHEET_COL_FUNCTION", "Function"),
             team: stringEnv("SHEET_COL_TEAM", "Team"),
-            squad: stringEnv("SHEET_COL_SQUAD", "Squad"),
             timestamp: stringEnv("SHEET_COL_TIMESTAMP", "Timestamp"),
             action: stringEnv("SHEET_COL_ACTION", "Action"),
             mous: stringEnv("SHEET_COL_MOUS", "MOUs"),
             coldCalls: stringEnv("SHEET_COL_COLD_CALLS", "Cold Calls"),
             followups: stringEnv("SHEET_COL_FOLLOWUPS", "Followups")
+        },
+        mkt: {
+            spreadsheetId: stringEnv("MKT_SPREADSHEET_ID"),
+            sheetName: stringEnv("MKT_SHEET_NAME", "Sheet1")
         }
     },
     supabase: {

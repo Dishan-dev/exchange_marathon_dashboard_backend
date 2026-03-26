@@ -56,6 +56,7 @@ export interface TeamDashboardMiniTeam {
   growth: number;
   icon: string;
   performers: TeamDashboardPerformer[];
+  allPerformers?: TeamDashboardPerformer[];
 }
 
 export interface TeamDashboardPayload {

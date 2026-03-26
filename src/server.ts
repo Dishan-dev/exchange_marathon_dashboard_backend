@@ -196,9 +196,9 @@ app.get("/api/dashboard/:team", async (req, res) => {
     } else if (team === "mkt") {
       payload = await getMktDashboard("MKT");
     } else if (team === "members") {
-      payload = await getMktDashboard("Members", "member");
+      payload = await getMktDashboard("Members", "member", { applyMstWeighting: true });
     } else if (team === "tls") {
-      payload = await getMktDashboard("TLs", "tl");
+      payload = await getMktDashboard("TLs", "tl", { applyMstWeighting: true });
     } else {
       payload = await getTeamDashboard(team, period, asOfDate);
     }

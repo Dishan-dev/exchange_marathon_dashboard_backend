@@ -1,11 +1,19 @@
 import cors from "cors";
 import express from "express";
-import { config } from "./config.js";
+import { config, assertSyncConfig } from "./config.js";
 import { runSync } from "./sync.js";
-import { getTeamDashboard } from "./aggregation.js";
+import { syncMktMembers } from "./sync_mkt.js";
+import { syncAllSheets } from "./sync_irm.js";
+import { getTeamDashboard, getMktDashboard, getIRMTeamDashboard, getMarcomDashboardFromTable } from "./aggregation.js";
+import { getSupabase } from "./supabase.js";
 const app = express();
 app.use(cors());
 app.use(express.json());
+// Diagnostic Logger: Helps see if requests from Google are even reaching us
+app.use((req, res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} from ${req.ip} - ${req.get('user-agent')}`);
+    next();
+});
 let schedulerBusy = false;
 function startAutoSyncScheduler() {
     if (!config.syncScheduler.enabled) {
@@ -24,6 +32,7 @@ function startAutoSyncScheduler() {
         schedulerBusy = true;
         try {
             await runSync();
+            await syncMktMembers();
             console.log(`Auto sync completed`);
         }
         catch (error) {
@@ -33,9 +42,92 @@ function startAutoSyncScheduler() {
             schedulerBusy = false;
         }
     }, intervalMs);
+    // High-frequency polling for manual triggers (Bypass for Render communication blocks)
+    setInterval(async () => {
+        if (schedulerBusy)
+            return;
+        try {
+            const { getSupabase } = await import("./supabase.js");
+            const supabase = getSupabase();
+            const { data, error } = await supabase
+                .from("sync_sources")
+                .select("id")
+                .eq("pending_sync", true)
+                .limit(1);
+            if (data && data.length > 0) {
+                console.log("🔔 Manual sync trigger detected in database!");
+                schedulerBusy = true;
+                try {
+                    await runSync();
+                    await syncMktMembers();
+                    await supabase.from("sync_sources").update({ pending_sync: false }).eq("pending_sync", true);
+                    console.log("✅ Database trigger processed and reset.");
+                }
+                finally {
+                    schedulerBusy = false;
+                }
+            }
+        }
+        catch (e) {
+            // Silent fail: table might not exist yet during migration phase
+        }
+    }, 30000); // Check every 30 seconds
 }
+app.get("/", (_req, res) => {
+    res.status(200).send(`
+    <h1 style="color: #00ffcc; font-family: sans-serif;">🚀 Marathon Dashboard Backend</h1>
+    <p style="color: #666;">Status: Connected & Healthy</p>
+    <p>Current Server Time: ${new Date().toISOString()}</p>
+  `);
+});
 app.get("/health", (_req, res) => {
     res.json({ status: "ok", timezone: config.timezone });
+});
+app.get("/sync/run", async (req, res) => {
+    // Allow GET to trigger sync for easier debugging/fallback
+    if (req.query.key === "marathon") {
+        if (schedulerBusy) {
+            return res.status(429).send("<h1>⏳ Sync Busy</h1><p>Another sync is already in progress.</p>");
+        }
+        res.status(202).send("<h1>🚀 Sync Triggered</h1><p>Synchronization is now running in the background. You can close this tab.</p>");
+        schedulerBusy = true;
+        try {
+            await runSync();
+        }
+        catch (e) {
+            console.error("GET sync failed:", e);
+        }
+        finally {
+            schedulerBusy = false;
+        }
+        return;
+    }
+    res.status(200).send(`
+    <h1>📡 Marathon Sync Endpoint</h1>
+    <p>This endpoint is active and healthy.</p>
+    <p>To trigger a synchronization manually, add <code>?key=marathon</code> to this URL.</p>
+    <p>Current Server Time: ${new Date().toISOString()}</p>
+  `);
+});
+// Alias endpoint for troubleshooting 503s
+app.get("/sync-now-direct", async (req, res) => {
+    if (req.query.key === "marathon") {
+        if (schedulerBusy)
+            return res.status(429).send("Busy");
+        res.status(202).send("🚀 Sync Triggered");
+        schedulerBusy = true;
+        try {
+            await runSync();
+        }
+        catch (e) {
+            console.error(e);
+        }
+        finally {
+            schedulerBusy = false;
+        }
+        return;
+    }
+    res.status(200).send("Marathon Direct Sync Endpoint Active");
 });
 app.post("/sync/run", async (_req, res) => {
     if (schedulerBusy) {
@@ -60,16 +152,100 @@ app.post("/sync/run", async (_req, res) => {
         schedulerBusy = false;
     }
 });
+app.post("/sync/all-sheets", async (req, res) => {
+    if (schedulerBusy) {
+        res.status(429).json({ ok: false, error: "Sync already in progress." });
+        return;
+    }
+    schedulerBusy = true;
+    try {
+        const results = await syncAllSheets(req.body);
+        console.log(`✅ All-sheets sync completed:`, results);
+        res.status(200).json({ ok: true, data: results });
+    }
+    catch (error) {
+        console.error("Manual all-sheets sync failed:", error instanceof Error ? error.message : error);
+        res.status(500).json({ ok: false, error: "Internal server error during sync" });
+    }
+    finally {
+        schedulerBusy = false;
+    }
+});
 app.get("/api/dashboard/:team", async (req, res) => {
     const team = String(req.params.team || "").trim().toLowerCase();
     const period = String(req.query.period || "daily");
     const asOfDate = typeof req.query.asOfDate === "string" ? req.query.asOfDate : undefined;
     try {
-        const payload = await getTeamDashboard(team, period, asOfDate);
+        let payload;
+        if (team === "marcom") {
+            try {
+                payload = await getMarcomDashboardFromTable();
+            }
+            catch (e) {
+                payload = await getMktDashboard("MST");
+            }
+        }
+        else if (["irm1_t01", "irm2_t01", "irm1_t02", "irm2_t02"].includes(team)) {
+            payload = await getIRMTeamDashboard(team, period);
+        }
+        else if (team === "mkt") {
+            payload = await getMktDashboard("MKT");
+        }
+        else if (team === "members") {
+            payload = await getMktDashboard("Members", "member", { applyMstWeighting: true });
+        }
+        else if (team === "tls") {
+            payload = await getMktDashboard("TLs", "tl", { applyMstWeighting: true });
+        }
+        else {
+            payload = await getTeamDashboard(team, period, asOfDate);
+        }
         res.status(200).json({ ok: true, data: payload });
     }
     catch (error) {
         res.status(500).json({ ok: false, error: error instanceof Error ? error.message : "Dashboard error" });
+    }
+});
+app.get("/api/mkt-members", async (_req, res) => {
+    try {
+        const supabase = getSupabase();
+        const { data, error } = await supabase
+            .from("mkt_members")
+            .select("*")
+            .order("Points", { ascending: false });
+        if (error)
+            throw error;
+        res.status(200).json({ ok: true, data: data || [] });
+    }
+    catch (error) {
+        res.status(500).json({ ok: false, error: error instanceof Error ? error.message : "Database error" });
+    }
+});
+app.post("/sync/mkt", async (_req, res) => {
+    if (schedulerBusy) {
+        res.status(429).json({ ok: false, error: "Sync already in progress." });
+        return;
+    }
+    schedulerBusy = true;
+    try {
+        const result = await syncMktMembers();
+        console.log(`Manual MKT sync completed:`, result);
+        if (result.success) {
+            res.status(200).json({
+                ok: true,
+                message: `MKT sync successful. Found ${result.count} members.`
+            });
+        }
+        else {
+            res.status(500).json({ ok: false, error: result.error });
+        }
+    }
+    catch (error) {
+        console.error("Manual MKT sync failed:", error instanceof Error ? error.message : error);
+        res.status(500).json({ ok: false, error: "Internal server error during sync" });
+    }
+    finally {
+        schedulerBusy = false;
     }
 });
 const syncOnce = process.argv.includes("--sync-once");
@@ -85,24 +261,28 @@ if (syncOnce) {
     });
 }
 else {
-    const server = app.listen(config.port, () => {
+    const server = app.listen(config.port, "0.0.0.0", () => {
         const address = server.address();
         const port = address?.port || config.port;
-        console.log(`Backend running on http://localhost:${port}`);
+        console.log(`🚀 Backend successfully started on port ${port}`);
+        console.log(`🌍 Health check available at /health`);
         // Start scheduler if enabled
         startAutoSyncScheduler();
         // Trigger initial sync on startup with lock
         void (async () => {
-            if (schedulerBusy)
-                return;
-            schedulerBusy = true;
             try {
-                console.log("Running initial startup sync...");
+                console.log("🚦 Checking sync configuration...");
+                assertSyncConfig();
+                if (schedulerBusy)
+                    return;
+                schedulerBusy = true;
+                console.log("🔄 Running initial startup sync...");
                 const result = await runSync();
-                console.log(`Initial startup sync completed: ${result.runId}`, result);
+                await syncMktMembers();
+                console.log(`✅ Initial startup sync completed: ${result.runId}`, result);
             }
             catch (error) {
-                console.error("Initial startup sync failed:", error instanceof Error ? error.message : error);
+                console.warn("⚠️ Initial startup sync skipped/failed:", error instanceof Error ? error.message : error);
             }
             finally {
                 schedulerBusy = false;
