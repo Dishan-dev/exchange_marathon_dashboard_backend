@@ -422,7 +422,7 @@ export async function getB2BDashboardFromTable() {
             email: String(row.email_address || `${memberName.toLowerCase().replace(/\s+/g, ".")}@example.com`),
             name: memberName,
             role: String(row.role || "B2B Member"),
-            score: Number(row.total_pts || 0),
+            score: Math.ceil(Number(row.total_pts || 0)),
             avatar: initials(memberName),
             metrics: {
                 mous: Number(row.mous || 0),
