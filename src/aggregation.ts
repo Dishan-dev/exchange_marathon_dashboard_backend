@@ -695,7 +695,7 @@ export async function getIgtB2BDashboard(): Promise<TeamDashboardPayload> {
     syncInfo: {
       lastSyncTime: nowIso(),
       nextSyncTime: nowIso(),
-      isLive: true
+      intervalMinutes: 0
     }
   };
 }
