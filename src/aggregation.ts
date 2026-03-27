@@ -618,3 +618,84 @@ export async function getOgtDashboard(): Promise<TeamDashboardPayload> {
     }
   };
 }
+
+export async function getIgtB2BDashboard(): Promise<TeamDashboardPayload> {
+  const supabase = getSupabase() as any;
+  const { data, error } = await supabase
+    .from("igt_b2b_members")
+    .select("*")
+    .order("total_points", { ascending: false });
+
+  if (error) throw error;
+  const rows = data || [];
+
+  const teamMap = new Map<string, TeamDashboardPerformer[]>();
+  const seenMembers = new Set<string>();
+
+  for (const row of rows) {
+    const teamName = String(row.team_name || "IGT").trim() || "IGT";
+    const memberName = String(row.member_name || "Unknown").trim() || "Unknown";
+    const dedupKey = `${teamName}-${memberName.toLowerCase()}`;
+    
+    if (seenMembers.has(dedupKey)) continue;
+    seenMembers.add(dedupKey);
+
+    const members = teamMap.get(teamName) || [];
+    members.push({
+      email: `${memberName.toLowerCase().replace(/\s+/g, ".")}_igtb2b@example.com`,
+      name: memberName,
+      role: "MEMBER", // Generic role as not in table
+      score: Math.ceil(Number(row.total_points || 0)),
+      avatar: initials(memberName),
+      metrics: {
+        mous: Number(row.noof_su || 0),
+        coldCalls: Number(row.noof_apl || 0), 
+        followups: Number(row.noof_apd || 0),
+        igt_su: Number(row.noof_su || 0),
+        igt_apl: Number(row.noof_apl || 0),
+        igt_apd: Number(row.noof_apd || 0),
+        igt_ir_calls: Number(row.ir_calls || 0),
+        igt_campaigns: Number(row.national_campaigns || 0),
+        igt_flyers: Number(row.pre_su_opp_flyers || 0)
+      }
+    } as any);
+
+    teamMap.set(teamName, members);
+  }
+
+  const miniTeams: TeamDashboardMiniTeam[] = Array.from(teamMap.entries())
+    .map(([name, performers]) => ({
+      slug: name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, ""),
+      name,
+      rank: 0,
+      points: performers.reduce((sum, p) => sum + p.score, 0),
+      growth: 0,
+      icon: initials(name),
+      performers: performers.sort((a, b) => b.score - a.score)
+    }))
+    .sort((a, b) => b.points - a.points)
+    .map((team, index) => ({ ...team, rank: index + 1 }));
+
+  const totalPoints = miniTeams.reduce((sum, team) => sum + team.points, 0);
+  const completedActions = miniTeams
+    .flatMap((team) => team.performers)
+    .reduce((sum, performer) => sum + performer.metrics.mous + performer.metrics.coldCalls + performer.metrics.followups, 0);
+
+  return {
+    name: "IGT B2B",
+    displayName: "Incoming Global Talent B2B Performance Dashboard",
+    functionSlug: "igt_b2b",
+    miniTeams,
+    totalPoints,
+    totalGrowth: 0,
+    completedActions,
+    weeklyGrowth: 0,
+    asOfDate: currentDateKey(),
+    period: "marathon",
+    syncInfo: {
+      lastSyncTime: nowIso(),
+      nextSyncTime: nowIso(),
+      isLive: true
+    }
+  };
+}

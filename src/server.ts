@@ -11,7 +11,8 @@ import {
   getIRMTeamDashboard, 
   getMarcomDashboardFromTable,
   getB2BDashboardFromTable,
-  getOgtDashboard
+  getOgtDashboard,
+  getIgtB2BDashboard
 } from "./aggregation.js";
 import { getSupabase } from "./supabase.js";
 const app = express();
@@ -311,6 +312,65 @@ app.post("/sync/ogt-members", async (req, res) => {
   }
 });
 
+app.post("/sync/igt-b2b", async (req, res) => {
+  const { rows } = req.body as { rows?: any[] };
+  const records = Array.isArray(rows) ? rows : [];
+
+  if (records.length === 0) {
+    res.status(400).json({ ok: false, error: "Request body must include a non-empty rows array." });
+    return;
+  }
+
+  if (schedulerBusy) {
+    res.status(429).json({ ok: false, error: "Sync already in progress." });
+    return;
+  }
+
+  schedulerBusy = true;
+  try {
+    const supabase = getSupabase() as any;
+
+    const mappedRows = records
+      .map((row) => {
+        const memberName = String(row.member_name || "").trim();
+        if (!memberName) return null;
+
+        return {
+          team_name: String(row.team_name || "IGT B2B").trim(),
+          member_name: memberName,
+          noof_su: Number(row.noof_su || 0),
+          noof_apl: Number(row.noof_apl || 0),
+          noof_apd: Number(row.noof_apd || 0),
+          ir_calls: Number(row.ir_calls || 0),
+          national_campaigns: Number(row.national_campaigns || 0),
+          pre_su_opp_flyers: Number(row.pre_su_opp_flyers || 0),
+          total_points: Number(row.total_points || 0),
+          updated_at: new Date().toISOString()
+        };
+      })
+      .filter(Boolean);
+
+    if (mappedRows.length === 0) {
+      res.status(400).json({ ok: false, error: "No valid records found (member_name is required)." });
+      return;
+    }
+
+    const { error: upsertError } = await supabase
+      .from("igt_b2b_members")
+      .upsert(mappedRows, { onConflict: "member_name" });
+
+    if (upsertError) throw upsertError;
+
+    res.status(200).json({ ok: true, upserted: mappedRows.length });
+  } catch (error: any) {
+    const errorMessage = error?.message || String(error);
+    console.error("IGT B2B sync failed:", error);
+    res.status(500).json({ ok: false, error: errorMessage });
+  } finally {
+    schedulerBusy = false;
+  }
+});
+
 app.get("/api/dashboard/:team", async (req, res) => {
   const team = String(req.params.team || "").trim().toLowerCase();
   const period = String(req.query.period || "daily") as any;
@@ -326,6 +386,8 @@ app.get("/api/dashboard/:team", async (req, res) => {
       }
     } else if (team === "igv_b2b") {
       payload = await getB2BDashboardFromTable();
+    } else if (team === "igt_b2b") {
+      payload = await getIgtB2BDashboard();
     } else if (team === "ogt") {
       payload = await getOgtDashboard();
     } else if (["irm1_t01", "irm2_t01", "irm1_t02", "irm2_t02"].includes(team)) {
