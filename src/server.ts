@@ -302,9 +302,9 @@ app.post("/sync/ogt-members", async (req, res) => {
     }
 
     res.status(200).json({ ok: true, upserted: mappedRows.length });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error("OGT sync failed:", errorMessage);
+  } catch (error: any) {
+    const errorMessage = error?.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
+    console.error("OGT sync failed:", error);
     res.status(500).json({ ok: false, error: errorMessage });
   } finally {
     schedulerBusy = false;
