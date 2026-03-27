@@ -332,19 +332,20 @@ app.post("/sync/igt-b2b", async (req, res) => {
 
     const mappedRows = records
       .map((row) => {
-        const memberName = String(row.member_name || "").trim();
+        const memberName = String(row.name || row.member_name || "").trim();
         if (!memberName) return null;
 
         return {
-          team_name: String(row.team_name || "IGT B2B").trim(),
+          team_name: String(row.team || row.team_name || "IGT B2B").trim(),
           member_name: memberName,
-          noof_su: Number(row.noof_su || 0),
-          noof_apl: Number(row.noof_apl || 0),
-          noof_apd: Number(row.noof_apd || 0),
-          ir_calls: Number(row.ir_calls || 0),
-          national_campaigns: Number(row.national_campaigns || 0),
-          pre_su_opp_flyers: Number(row.pre_su_opp_flyers || 0),
-          total_points: Number(row.total_points || 0),
+          member_role: String(row.role || "MEMBER").trim(),
+          cold_calls: Number(row.cold_calls || 0),
+          follow_ups: Number(row.follow_ups || 0),
+          meetings_scheduled: Number(row.meetings_scheduled || 0),
+          leads_generated: Number(row.leads_generated || 0),
+          contracts_signed: Number(row.contracts_signed || 0),
+          training_attendance: Number(row.training_attendance || 0),
+          total_points: Number(row.total_individual_score || row.total_points || 0),
           updated_at: new Date().toISOString()
         };
       })

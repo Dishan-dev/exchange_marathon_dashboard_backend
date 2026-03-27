@@ -644,19 +644,19 @@ export async function getIgtB2BDashboard(): Promise<TeamDashboardPayload> {
     members.push({
       email: `${memberName.toLowerCase().replace(/\s+/g, ".")}_igtb2b@example.com`,
       name: memberName,
-      role: "MEMBER", // Generic role as not in table
+      role: String(row.member_role || "MEMBER"), 
       score: Math.ceil(Number(row.total_points || 0)),
       avatar: initials(memberName),
       metrics: {
-        mous: Number(row.noof_su || 0),
-        coldCalls: Number(row.noof_apl || 0), 
-        followups: Number(row.noof_apd || 0),
-        igt_su: Number(row.noof_su || 0),
-        igt_apl: Number(row.noof_apl || 0),
-        igt_apd: Number(row.noof_apd || 0),
-        igt_ir_calls: Number(row.ir_calls || 0),
-        igt_campaigns: Number(row.national_campaigns || 0),
-        igt_flyers: Number(row.pre_su_opp_flyers || 0)
+        mous: Number(row.meetings_scheduled || 0), // Map meetings to first metric
+        coldCalls: Number(row.cold_calls || 0), 
+        followups: Number(row.follow_ups || 0),
+        igt_cold_calls: Number(row.cold_calls || 0),
+        igt_follow_ups: Number(row.follow_ups || 0),
+        igt_meetings: Number(row.meetings_scheduled || 0),
+        igt_leads: Number(row.leads_generated || 0),
+        igt_contracts: Number(row.contracts_signed || 0),
+        igt_training: Number(row.training_attendance || 0)
       }
     } as any);
 
