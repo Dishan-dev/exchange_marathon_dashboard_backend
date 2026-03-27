@@ -548,12 +548,17 @@ export async function getOgtDashboard(): Promise<TeamDashboardPayload> {
   const rows = data || [];
 
   const teamMap = new Map<string, TeamDashboardPerformer[]>();
+  const seenMembers = new Set<string>();
 
   for (const row of rows) {
     const teamName = String(row.team_name || "OGT").trim() || "OGT";
-    const members = teamMap.get(teamName) || [];
     const memberName = String(row.member_name || "Unknown").trim() || "Unknown";
+    const dedupKey = `${teamName}-${memberName.toLowerCase()}`;
+    
+    if (seenMembers.has(dedupKey)) continue;
+    seenMembers.add(dedupKey);
 
+    const members = teamMap.get(teamName) || [];
     members.push({
       email: `${memberName.toLowerCase().replace(/\s+/g, ".")}_ogt@example.com`,
       name: memberName,
