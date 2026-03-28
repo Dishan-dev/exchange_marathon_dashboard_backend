@@ -648,7 +648,7 @@ export async function getIgtB2BDashboard(): Promise<TeamDashboardPayload> {
       score: Math.ceil(Number(row.total_points || 0)),
       avatar: initials(memberName),
       metrics: {
-        mous: Number(row.meetings_scheduled || 0), // Map meetings to first metric
+        mous: Number(row.meetings_scheduled || 0),
         coldCalls: Number(row.cold_calls || 0), 
         followups: Number(row.follow_ups || 0),
         igt_cold_calls: Number(row.cold_calls || 0),
@@ -656,23 +656,31 @@ export async function getIgtB2BDashboard(): Promise<TeamDashboardPayload> {
         igt_meetings: Number(row.meetings_scheduled || 0),
         igt_leads: Number(row.leads_generated || 0),
         igt_contracts: Number(row.contracts_signed || 0),
-        igt_training: Number(row.training_attendance || 0)
-      }
+        igt_training: Number(row.training_attendance || 0),
+        igt_team_meeting: Number(row.team_meeting || 0),
+        igt_team_bonus: Number(row.team_cold_calls_bonus || 0)
+      },
+      team_totals: Number(row.team_totals || 0) // Temporary store per member
     } as any);
 
     teamMap.set(teamName, members);
   }
 
   const miniTeams: TeamDashboardMiniTeam[] = Array.from(teamMap.entries())
-    .map(([name, performers]) => ({
-      slug: name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, ""),
-      name,
-      rank: 0,
-      points: performers.reduce((sum, p) => sum + p.score, 0),
-      growth: 0,
-      icon: initials(name),
-      performers: performers.sort((a, b) => b.score - a.score)
-    }))
+    .map(([name, performers]) => {
+      // Use team_totals from the first performer (matches all performers in same team)
+      const teamTotals = (performers[0] as any).team_totals || 0;
+      
+      return {
+        slug: name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, ""),
+        name,
+        rank: 0,
+        points: teamTotals, // Use team_totals from sheet
+        growth: 0,
+        icon: initials(name),
+        performers: performers.sort((a, b) => b.score - a.score)
+      };
+    })
     .sort((a, b) => b.points - a.points)
     .map((team, index) => ({ ...team, rank: index + 1 }));
 

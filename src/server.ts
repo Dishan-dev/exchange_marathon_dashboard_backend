@@ -345,6 +345,9 @@ app.post("/sync/igt-b2b", async (req, res) => {
           leads_generated: Number(row.leads_generated || 0),
           contracts_signed: Number(row.contracts_signed || 0),
           training_attendance: Number(row.training_attendance || 0),
+          team_meeting: Number(row.team_meeting || row.team_meeting_onlinephysical || 0),
+          team_cold_calls_bonus: Number(row.team_cold_calls_bonus || row.completing_25_successfull_cold_calls_as_a_team_5_points || 0),
+          team_totals: Number(row.team_totals || 0),
           total_points: Number(row.total_individual_score || row.total_points || 0),
           updated_at: new Date().toISOString()
         };
