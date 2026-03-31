@@ -217,3 +217,18 @@ export interface XcendPsSyncPayload {
   xcend_ir: XcendIrMember[];
   synced_at: string;
 }
+export interface XcendB2cMember {
+  team: string;
+  member_name: string;
+  role: string;
+  country_based: number;
+  project_based: number;
+  trend_based: number;
+  no_of_signups: number;
+  points: number;
+}
+
+export interface XcendB2cSyncPayload {
+  xcend_b2c_members: XcendB2cMember[];
+  synced_at: string;
+}

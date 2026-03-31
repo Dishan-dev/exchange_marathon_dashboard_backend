@@ -22,6 +22,8 @@ import {
 } from "./aggregation.js";
 import { syncXcendPsData } from "./sync_xcend_ps.js";
 import { getSupabase } from "./supabase.js";
+import { syncXcendB2cData } from "./sync_xcend_b2c.js";
+import { getOgvB2cDashboard } from "./aggregation.js";
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -460,6 +462,27 @@ app.post("/sync/xcend-ps", async (req, res) => {
   }
 });
 
+
+app.post("/sync/xcend-b2c", async (req, res) => {
+  if (schedulerBusy) {
+    res.status(429).json({ ok: false, error: "Sync already in progress." });
+    return;
+  }
+
+  schedulerBusy = true;
+  try {
+    const results = await syncXcendB2cData(req.body);
+    console.log(`✅ Xcend B2C sync completed:`, results);
+    res.status(200).json({ ok: true, data: results });
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error("Manual Xcend B2C sync failed:", errorMsg);
+    res.status(500).json({ ok: false, error: errorMsg });
+  } finally {
+    schedulerBusy = false;
+  }
+});
+
 app.get("/api/dashboard/:team", async (req, res) => {
   const team = String(req.params.team || "").trim().toLowerCase();
   const period = String(req.query.period || "daily") as any;
@@ -489,6 +512,8 @@ app.get("/api/dashboard/:team", async (req, res) => {
       payload = await getOgvCrDashboard();
     } else if (team === "ogv_ir") {
       payload = await getOgvIrDashboard();
+    } else if (team === "ogv_b2c") {
+      payload = await getOgvB2cDashboard();
     } else if (["irm1_t01", "irm2_t01", "irm1_t02", "irm2_t02"].includes(team)) {
       payload = await getIRMTeamDashboard(team, period);
     } else if (team === "mkt") {
